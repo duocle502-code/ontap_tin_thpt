@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { QuizSession, Progress } from '../types';
 import { MOCK_SUBJECTS } from '../data/mockData';
 import { 
@@ -12,17 +12,33 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
 interface DashboardProps {
   sessions: QuizSession[];
   progress: Progress;
   onExport: () => void;
+  onExportWord: () => void;
+  onExportPDF: () => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-export default function Dashboard({ sessions, progress, onExport, onImport }: DashboardProps) {
+export default function Dashboard({ sessions, progress, onExport, onExportWord, onExportPDF, onImport }: DashboardProps) {
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const chartData = sessions.slice(0, 7).reverse().map(s => ({
     date: new Date(s.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
     score: Math.round(s.score)
@@ -33,6 +49,30 @@ export default function Dashboard({ sessions, progress, onExport, onImport }: Da
     { label: 'Điểm trung bình', value: `${Math.round(progress.averageScore)}%`, icon: 'fa-solid fa-star', color: 'bg-orange-500' },
     { label: 'Chuỗi ngày học', value: progress.streakDays, icon: 'fa-solid fa-fire', color: 'bg-red-500' },
     { label: 'Chủ đề đã học', value: new Set(sessions.map(s => s.subjectId)).size, icon: 'fa-solid fa-book', color: 'bg-green-500' },
+  ];
+
+  const exportOptions = [
+    {
+      label: 'Xuất Word (.doc)',
+      icon: 'fa-solid fa-file-word',
+      color: 'text-blue-600',
+      bgHover: 'hover:bg-blue-50',
+      onClick: () => { onExportWord(); setShowExportMenu(false); }
+    },
+    {
+      label: 'Xuất PDF (.pdf)',
+      icon: 'fa-solid fa-file-pdf',
+      color: 'text-red-500',
+      bgHover: 'hover:bg-red-50',
+      onClick: () => { onExportPDF(); setShowExportMenu(false); }
+    },
+    {
+      label: 'Xuất JSON (.json)',
+      icon: 'fa-solid fa-file-code',
+      color: 'text-amber-500',
+      bgHover: 'hover:bg-amber-50',
+      onClick: () => { onExport(); setShowExportMenu(false); }
+    },
   ];
 
   return (
@@ -48,13 +88,43 @@ export default function Dashboard({ sessions, progress, onExport, onImport }: Da
             Nhập dữ liệu
             <input type="file" accept=".json" onChange={onImport} className="hidden" />
           </label>
-          <button 
-            onClick={onExport}
-            className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all flex items-center gap-2"
-          >
-            <i className="fa-solid fa-file-export"></i>
-            Xuất dữ liệu
-          </button>
+          <div className="relative" ref={exportMenuRef}>
+            <button 
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all flex items-center gap-2"
+            >
+              <i className="fa-solid fa-file-export"></i>
+              Xuất dữ liệu
+              <i className={`fa-solid fa-chevron-down text-xs transition-transform ${showExportMenu ? 'rotate-180' : ''}`}></i>
+            </button>
+            <AnimatePresence>
+              {showExportMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50"
+                >
+                  <div className="p-2">
+                    {exportOptions.map((opt, idx) => (
+                      <button
+                        key={idx}
+                        onClick={opt.onClick}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-700 transition-all",
+                          opt.bgHover
+                        )}
+                      >
+                        <i className={cn(opt.icon, opt.color, "text-lg w-5 text-center")}></i>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
