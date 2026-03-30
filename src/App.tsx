@@ -198,10 +198,10 @@ export default function App() {
 
   const handleExportPDF = async () => {
     try {
-      Swal.fire({ title: 'Đang tạo PDF...', text: 'Vui lòng đợi trong giây lát', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
       await exportToPDF(getAppData());
-      Swal.fire('Thành công', 'Đã xuất file PDF thành công!', 'success');
+      Swal.fire('Thành công', 'Đã mở hộp thoại in PDF. Chọn "Save as PDF" để lưu file.', 'success');
     } catch (err) {
+      console.error('PDF export error:', err);
       Swal.fire('Lỗi', 'Không thể xuất file PDF. Vui lòng thử lại.', 'error');
     }
   };
