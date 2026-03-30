@@ -16,6 +16,8 @@ export interface Subject {
   name: string;
   icon: string;
   questionsCount: number;
+  grade: string; // '10', '11', '12'
+  topicDescription: string; // Chi tiết nội dung kiến thức SGK cho AI
 }
 
 export interface UserProfile {
