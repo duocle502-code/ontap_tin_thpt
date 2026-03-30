@@ -23,6 +23,7 @@ import ExamView from './components/ExamView';
 import ExamResultView from './components/ExamResultView';
 import SettingsModal from './components/SettingsModal';
 import { MODELS } from './services/gemini';
+import { exportToWord, exportToPDF } from './services/exportData';
 
 const INITIAL_SETTINGS: AppSettings = {
   theme: 'light',
@@ -165,15 +166,17 @@ export default function App() {
     setCurrentView('examResult');
   };
 
+  const getAppData = (): AppData => ({
+    profile,
+    subjects: MOCK_SUBJECTS,
+    questions: MOCK_QUESTIONS,
+    sessions,
+    progress,
+    settings
+  });
+
   const handleExportData = () => {
-    const data: AppData = {
-      profile,
-      subjects: MOCK_SUBJECTS,
-      questions: MOCK_QUESTIONS,
-      sessions,
-      progress,
-      settings
-    };
+    const data = getAppData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -181,7 +184,26 @@ export default function App() {
     a.download = `informatics_data_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    Swal.fire('Thành công', 'Đã xuất dữ liệu thành công!', 'success');
+    Swal.fire('Thành công', 'Đã xuất dữ liệu JSON thành công!', 'success');
+  };
+
+  const handleExportWord = () => {
+    try {
+      exportToWord(getAppData());
+      Swal.fire('Thành công', 'Đã xuất file Word thành công!', 'success');
+    } catch (err) {
+      Swal.fire('Lỗi', 'Không thể xuất file Word. Vui lòng thử lại.', 'error');
+    }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      Swal.fire({ title: 'Đang tạo PDF...', text: 'Vui lòng đợi trong giây lát', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      await exportToPDF(getAppData());
+      Swal.fire('Thành công', 'Đã xuất file PDF thành công!', 'success');
+    } catch (err) {
+      Swal.fire('Lỗi', 'Không thể xuất file PDF. Vui lòng thử lại.', 'error');
+    }
   };
 
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -381,6 +403,8 @@ export default function App() {
                 sessions={sessions} 
                 progress={progress} 
                 onExport={handleExportData}
+                onExportWord={handleExportWord}
+                onExportPDF={handleExportPDF}
                 onImport={handleImportData}
               />
             </motion.div>
