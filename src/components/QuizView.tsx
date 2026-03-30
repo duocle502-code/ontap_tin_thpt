@@ -9,16 +9,20 @@ interface QuizViewProps {
   questions: Question[];
   onFinish: (session: QuizSession) => void;
   onCancel: () => void;
+  onRegenerate?: () => void;
 }
 
-export default function QuizView({ subject, questions, onFinish, onCancel }: QuizViewProps) {
+export default function QuizView({ subject, questions, onFinish, onCancel, onRegenerate }: QuizViewProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [timeLeft, setTimeLeft] = useState(questions.length * 60); // 1 minute per question
   const [isFinished, setIsFinished] = useState(false);
   const [startTime] = useState(Date.now());
+  const [navPage, setNavPage] = useState(0);
 
   const currentQuestion = questions[currentQuestionIndex];
+  const QUESTIONS_PER_NAV_PAGE = 25;
+  const totalNavPages = Math.ceil(questions.length / QUESTIONS_PER_NAV_PAGE);
 
   const handleFinish = useCallback(() => {
     if (isFinished) return;
@@ -58,6 +62,14 @@ export default function QuizView({ subject, questions, onFinish, onCancel }: Qui
 
     return () => clearInterval(timer);
   }, [timeLeft, handleFinish]);
+
+  // Update nav page when jumping to a question
+  useEffect(() => {
+    const newPage = Math.floor(currentQuestionIndex / QUESTIONS_PER_NAV_PAGE);
+    if (newPage !== navPage) {
+      setNavPage(newPage);
+    }
+  }, [currentQuestionIndex]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -99,6 +111,8 @@ export default function QuizView({ subject, questions, onFinish, onCancel }: Qui
     });
   };
 
+  const answeredCount = Object.keys(answers).length;
+
   return (
     <div className="max-w-4xl mx-auto">
       {/* Quiz Header */}
@@ -109,11 +123,24 @@ export default function QuizView({ subject, questions, onFinish, onCancel }: Qui
           </div>
           <div>
             <h2 className="font-bold text-slate-800 line-clamp-1">{subject.name}</h2>
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Câu hỏi {currentQuestionIndex + 1} / {questions.length}</p>
+            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+              Câu hỏi {currentQuestionIndex + 1} / {questions.length}
+              <span className="ml-3 text-blue-500">• Đã làm: {answeredCount}/{questions.length}</span>
+            </p>
           </div>
         </div>
         
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              className="flex items-center gap-2 px-4 py-2 bg-violet-50 text-violet-600 font-bold text-xs rounded-xl border border-violet-100 hover:bg-violet-100 transition-all"
+              title="Tạo 50 câu hỏi hoàn toàn mới"
+            >
+              <i className="fa-solid fa-rotate"></i>
+              Đề mới
+            </button>
+          )}
           <div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-2xl text-orange-600 font-bold border border-orange-100">
             <i className="fa-regular fa-clock"></i>
             <span className="font-mono text-lg">{formatTime(timeLeft)}</span>
@@ -217,22 +244,66 @@ export default function QuizView({ subject, questions, onFinish, onCancel }: Qui
         </motion.div>
       </AnimatePresence>
 
-      {/* Question Navigator */}
-      <div className="mt-8 flex flex-wrap justify-center gap-2">
-        {questions.map((q, index) => (
-          <button
-            key={q.id}
-            onClick={() => setCurrentQuestionIndex(index)}
-            className={cn(
-              "w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold transition-all",
-              currentQuestionIndex === index ? "bg-blue-600 text-white shadow-lg shadow-blue-200 scale-110" :
-              answers[q.id] !== undefined ? "bg-blue-50 text-blue-600 border border-blue-100" :
-              "bg-white text-slate-400 border border-slate-100 hover:border-slate-300"
-            )}
-          >
-            {index + 1}
-          </button>
-        ))}
+      {/* Question Navigator — Paginated for 50 questions */}
+      <div className="mt-8 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+        {/* Nav page controls */}
+        {totalNavPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mb-4">
+            {Array.from({ length: totalNavPages }, (_, i) => {
+              const start = i * QUESTIONS_PER_NAV_PAGE + 1;
+              const end = Math.min((i + 1) * QUESTIONS_PER_NAV_PAGE, questions.length);
+              return (
+                <button
+                  key={i}
+                  onClick={() => setNavPage(i)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    navPage === i 
+                      ? "bg-blue-600 text-white shadow-md" 
+                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  )}
+                >
+                  Câu {start}-{end}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Question buttons */}
+        <div className="flex flex-wrap justify-center gap-2">
+          {questions
+            .slice(navPage * QUESTIONS_PER_NAV_PAGE, (navPage + 1) * QUESTIONS_PER_NAV_PAGE)
+            .map((q, index) => {
+              const globalIndex = navPage * QUESTIONS_PER_NAV_PAGE + index;
+              return (
+                <button
+                  key={q.id}
+                  onClick={() => setCurrentQuestionIndex(globalIndex)}
+                  className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold transition-all",
+                    currentQuestionIndex === globalIndex ? "bg-blue-600 text-white shadow-lg shadow-blue-200 scale-110" :
+                    answers[q.id] !== undefined ? "bg-blue-50 text-blue-600 border border-blue-100" :
+                    "bg-white text-slate-400 border border-slate-100 hover:border-slate-300"
+                  )}
+                >
+                  {globalIndex + 1}
+                </button>
+              );
+            })}
+        </div>
+
+        {/* Stats */}
+        <div className="flex justify-center gap-6 mt-4 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-blue-50 border border-blue-100"></span>
+            Đã trả lời ({answeredCount})
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-white border border-slate-100"></span>
+            Chưa trả lời ({questions.length - answeredCount})
+          </span>
+        </div>
       </div>
     </div>
   );
