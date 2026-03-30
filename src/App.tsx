@@ -24,6 +24,7 @@ import ExamResultView from './components/ExamResultView';
 import SettingsModal from './components/SettingsModal';
 import { MODELS } from './services/gemini';
 import { exportToWord, exportToPDF } from './services/exportData';
+import { generateTopicQuestions, getCachedQuestions, clearCachedQuestions } from './services/topicQuizAI';
 
 const INITIAL_SETTINGS: AppSettings = {
   theme: 'light',
@@ -50,6 +51,8 @@ export default function App() {
   const [activeSubject, setActiveSubject] = useState<Subject | null>(null);
   const [lastSession, setLastSession] = useState<QuizSession | null>(null);
   const [lastExamResult, setLastExamResult] = useState<ExamResult | null>(null);
+  const [aiQuestions, setAiQuestions] = useState<Question[]>([]);
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // --- Load Data ---
@@ -96,7 +99,7 @@ export default function App() {
   }, [profile]);
 
   // --- Handlers ---
-  const handleStartQuiz = (subject: Subject) => {
+  const handleStartQuiz = async (subject: Subject) => {
     if (!profile) {
       Swal.fire({
         title: 'Thông báo',
@@ -106,8 +109,83 @@ export default function App() {
       });
       return;
     }
+
+    // For exam subjects, use mock questions directly
+    if (subject.id.includes('thi-')) {
+      setActiveSubject(subject);
+      setAiQuestions(MOCK_QUESTIONS.filter(q => q.subjectId === subject.id));
+      setCurrentView('quiz');
+      return;
+    }
+
+    // For topic quizzes, require API key
+    if (!settings.apiKey) {
+      Swal.fire({
+        title: 'Yêu cầu API Key',
+        text: 'Vui lòng cấu hình Gemini API Key trong Cài đặt để sử dụng tính năng ôn tập AI.',
+        icon: 'info',
+        confirmButtonText: 'Đã hiểu'
+      });
+      return;
+    }
+
+    // Check cache first
+    const cached = getCachedQuestions(subject.id);
+    if (cached) {
+      setActiveSubject(subject);
+      setAiQuestions(cached);
+      setCurrentView('quiz');
+      return;
+    }
+
+    // Generate questions via AI
     setActiveSubject(subject);
+    setIsGeneratingQuiz(true);
     setCurrentView('quiz');
+
+    try {
+      const questions = await generateTopicQuestions(settings.apiKey, settings.model, subject);
+      setAiQuestions(questions);
+    } catch (err: any) {
+      console.error('Failed to generate quiz:', err);
+      Swal.fire({
+        title: 'Lỗi tạo câu hỏi',
+        text: err.message || 'Không thể tạo câu hỏi. Vui lòng thử lại.',
+        icon: 'error',
+        confirmButtonText: 'Quay lại'
+      }).then(() => {
+        setCurrentView('home');
+      });
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleRegenerateQuiz = async () => {
+    if (!activeSubject || !settings.apiKey) return;
+    
+    const result = await Swal.fire({
+      title: 'Tạo đề mới?',
+      text: 'Hệ thống sẽ tạo 50 câu hỏi hoàn toàn mới cho chủ đề này.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Tạo đề mới',
+      cancelButtonText: 'Hủy'
+    });
+
+    if (!result.isConfirmed) return;
+
+    clearCachedQuestions(activeSubject.id);
+    setIsGeneratingQuiz(true);
+
+    try {
+      const questions = await generateTopicQuestions(settings.apiKey, settings.model, activeSubject);
+      setAiQuestions(questions);
+    } catch (err: any) {
+      Swal.fire('Lỗi', err.message || 'Không thể tạo câu hỏi mới.', 'error');
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
   };
 
   const handleFinishQuiz = (session: QuizSession) => {
@@ -330,12 +408,47 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
             >
-              <QuizView 
-                subject={activeSubject} 
-                questions={MOCK_QUESTIONS.filter(q => q.subjectId === activeSubject.id || activeSubject.id.includes('thi-'))}
-                onFinish={handleFinishQuiz}
-                onCancel={() => setCurrentView('home')}
-              />
+              {isGeneratingQuiz ? (
+                <div className="flex flex-col items-center justify-center py-24 gap-6">
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin"></div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <i className="fa-solid fa-robot text-blue-600 text-2xl animate-pulse"></i>
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-xl font-bold text-slate-800 mb-2">AI đang tạo câu hỏi...</h3>
+                    <p className="text-slate-500 text-sm">Đang soạn 50 câu hỏi trắc nghiệm bám sát SGK Kết nối tri thức</p>
+                    <p className="text-slate-400 text-xs mt-2">Chủ đề: {activeSubject.name}</p>
+                    <p className="text-blue-500 text-xs mt-4 font-medium">⏳ Quá trình này có thể mất 15-30 giây...</p>
+                  </div>
+                  <button
+                    onClick={() => { setCurrentView('home'); setIsGeneratingQuiz(false); }}
+                    className="mt-4 px-6 py-2.5 bg-white text-slate-600 font-bold rounded-xl border border-slate-200 hover:bg-slate-50 transition-all"
+                  >
+                    <i className="fa-solid fa-xmark mr-2"></i>Hủy
+                  </button>
+                </div>
+              ) : aiQuestions.length > 0 ? (
+                <QuizView 
+                  subject={activeSubject} 
+                  questions={aiQuestions}
+                  onFinish={handleFinishQuiz}
+                  onCancel={() => setCurrentView('home')}
+                  onRegenerate={!activeSubject.id.includes('thi-') ? handleRegenerateQuiz : undefined}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                  <i className="fa-solid fa-triangle-exclamation text-4xl text-orange-400"></i>
+                  <p className="text-slate-500">Không có câu hỏi nào. Vui lòng thử lại.</p>
+                  <button
+                    onClick={() => setCurrentView('home')}
+                    className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all"
+                  >
+                    Quay lại
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -349,6 +462,7 @@ export default function App() {
               <ResultView 
                 session={lastSession} 
                 subject={MOCK_SUBJECTS.find(s => s.id === lastSession.subjectId)!}
+                questions={aiQuestions}
                 onRetry={() => handleStartQuiz(MOCK_SUBJECTS.find(s => s.id === lastSession.subjectId)!)}
                 onHome={() => setCurrentView('home')}
                 onTutor={() => setCurrentView('tutor')}
