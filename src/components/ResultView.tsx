@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { QuizSession, Subject, Question } from '../types';
-import { MOCK_QUESTIONS } from '../data/mockData';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { callGeminiAI, PROMPTS } from '../services/gemini';
@@ -10,17 +9,16 @@ import Swal from 'sweetalert2';
 interface ResultViewProps {
   session: QuizSession;
   subject: Subject;
+  questions: Question[];
   onRetry: () => void;
   onHome: () => void;
   onTutor: () => void;
   apiKey?: string;
 }
 
-export default function ResultView({ session, subject, onRetry, onHome, onTutor, apiKey }: ResultViewProps) {
+export default function ResultView({ session, subject, questions, onRetry, onHome, onTutor, apiKey }: ResultViewProps) {
   const [explainingId, setExplainingId] = useState<string | null>(null);
   const [explanations, setExplanations] = useState<Record<string, string>>({});
-
-  const questions = MOCK_QUESTIONS.filter(q => q.subjectId === subject.id || subject.id.includes('thi-'));
   
   const handleExplain = async (question: Question) => {
     if (!apiKey) {
